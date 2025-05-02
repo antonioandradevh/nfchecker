@@ -15,58 +15,64 @@ def processar_xml(xml_content, filename):
         root = ET.fromstring(xml_content)
         infNFe = root.find('.//ns:infNFe', ns)
 
-        material = infNFe.find('.//ns:det/ns:prod/ns:xProd', ns).text.upper().strip()
-        quantidade = float(infNFe.find('.//ns:det/ns:prod/ns:qCom', ns).text)
-        valor_kg = float(infNFe.find('.//ns:det/ns:prod/ns:vUnCom', ns).text)
-        valor_venda = float(infNFe.find('.//ns:det/ns:prod/ns:vProd', ns).text)
+        dados = []
 
-        if material in NAO_EMBALAGENS:
-            categoria, tipo_nao_embalagem = NAO_EMBALAGENS[material]
-            subcategoria = ''
-            status = 'INVALIDADO'
-            observacoes = 'NÃO EMBALAGEM - ' + tipo_nao_embalagem
-        elif material in MATERIAL_MAPPING:
-            categoria, subcategoria = MATERIAL_MAPPING[material]
-            status = 'VALIDADO'
-            observacoes = ''
-        else:
-            categoria = ''
-            subcategoria = ''
-            status = 'VALIDADO'
-            observacoes = ''
+        for det in infNFe.findall('.//ns:det', ns):
+            prod = det.find('.//ns:prod', ns)
+            material = prod.find('ns:xProd', ns).text.upper().strip()
+            quantidade = float(prod.find('ns:qCom', ns).text)
+            valor_kg = float(prod.find('ns:vUnCom', ns).text)
+            valor_venda = float(prod.find('ns:vProd', ns).text)
 
-        dados_nota = {
-            'Tipo NF': infNFe.find('.//ns:ide/ns:tpNF', ns).text,
-            'ESTADO': infNFe.find('.//ns:emit/ns:enderEmit/ns:UF', ns).text,
-            'COOPERATIVA': infNFe.find('.//ns:emit/ns:xNome', ns).text,
-            'MÊS': infNFe.find('.//ns:ide/ns:dhEmi', ns).text[5:7],
-            'CATEGORIA': categoria,
-            'SUBCATEGORIA': subcategoria,
-            'MATERIAL': material,
-            'QUANTIDADE': quantidade if status == 'VALIDADO' else 0,
-            'VALOR POR KG': valor_kg,
-            'VALOR POR VENDA': valor_venda,
-            'NOME DO ARQUIVO': filename,
-            'CNPJ DO COMPRADOR': infNFe.find('.//ns:dest/ns:CNPJ', ns).text,
-            'UNIDADE': infNFe.find('.//ns:det/ns:prod/ns:uCom', ns).text,
-            'NCM': infNFe.find('.//ns:det/ns:prod/ns:NCM', ns).text,
-            'CFOP': infNFe.find('.//ns:det/ns:prod/ns:CFOP', ns).text,
-            'SOBRA': '',
-            'MÊS VALIDAÇÃO': '',
-            'ANO DE EMISSÃO': infNFe.find('.//ns:ide/ns:dhEmi', ns).text[:4],
-            'ANO TC': '',
-            'PAULO/REC+': '',
-            'MÊS ENTREGA': '',
-            'CNPJ ORGANIZAÇÃO': infNFe.find('.//ns:emit/ns:CNPJ', ns).text,
-            'CHAVE DE ACESSO': root.find('.//ns:protNFe/ns:infProt/ns:chNFe', ns).text,
-            'STATUS': status,
-            'NATUREZA': '',
-            'OBSERVAÇÕES': observacoes,
-            'QUANTIDADE NÃO VALIDADA': quantidade if status != 'VALIDADO' else 0,
-            'PROGRAMA': ''
-        }
+            if material in NAO_EMBALAGENS:
+                categoria, tipo_nao_embalagem = NAO_EMBALAGENS[material]
+                subcategoria = ''
+                status = 'INVALIDADO'
+                observacoes = 'NÃO EMBALAGEM - ' + tipo_nao_embalagem
+            elif material in MATERIAL_MAPPING:
+                categoria, subcategoria = MATERIAL_MAPPING[material]
+                status = 'VALIDADO'
+                observacoes = ''
+            else:
+                categoria = ''
+                subcategoria = ''
+                status = 'VALIDADO'
+                observacoes = ''
 
-        return pd.DataFrame([dados_nota])
+            dados_nota = {
+                'Tipo NF': infNFe.find('.//ns:ide/ns:tpNF', ns).text,
+                'ESTADO': infNFe.find('.//ns:emit/ns:enderEmit/ns:UF', ns).text,
+                'COOPERATIVA': infNFe.find('.//ns:emit/ns:xNome', ns).text,
+                'MÊS': infNFe.find('.//ns:ide/ns:dhEmi', ns).text[5:7],
+                'CATEGORIA': categoria,
+                'SUBCATEGORIA': subcategoria,
+                'MATERIAL': material,
+                'QUANTIDADE': quantidade if status == 'VALIDADO' else 0,
+                'VALOR POR KG': valor_kg,
+                'VALOR POR VENDA': valor_venda,
+                'NOME DO ARQUIVO': filename,
+                'CNPJ DO COMPRADOR': infNFe.find('.//ns:dest/ns:CNPJ', ns).text,
+                'UNIDADE': prod.find('ns:uCom', ns).text,
+                'NCM': prod.find('ns:NCM', ns).text,
+                'CFOP': prod.find('ns:CFOP', ns).text,
+                'SOBRA': '',
+                'MÊS VALIDAÇÃO': '',
+                'ANO DE EMISSÃO': infNFe.find('.//ns:ide/ns:dhEmi', ns).text[:4],
+                'ANO TC': '',
+                'PAULO/REC+': '',
+                'MÊS ENTREGA': '',
+                'CNPJ ORGANIZAÇÃO': infNFe.find('.//ns:emit/ns:CNPJ', ns).text,
+                'CHAVE DE ACESSO': root.find('.//ns:protNFe/ns:infProt/ns:chNFe', ns).text,
+                'STATUS': status,
+                'NATUREZA': '',
+                'OBSERVAÇÕES': observacoes,
+                'QUANTIDADE NÃO VALIDADA': quantidade if status != 'VALIDADO' else 0,
+                'PROGRAMA': ''
+            }
+
+            dados.append(dados_nota)
+
+        return pd.DataFrame(dados)
 
     except Exception as e:
         st.error(f"Erro ao processar o arquivo {filename}: {e}")
