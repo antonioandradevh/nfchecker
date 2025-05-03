@@ -5,6 +5,9 @@ import pandas as pd
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from io import BytesIO
+import zipfile
+import tempfile
+# DICIONARIO
 from mapeamento_materiais import MATERIAL_MAPPING, NAO_EMBALAGENS
 
 st.set_page_config(page_title="Validador de Notas Fiscais", page_icon="📄", layout="wide")
@@ -21,8 +24,12 @@ def processar_xml(xml_content, filename):
             prod = det.find('.//ns:prod', ns)
             material = prod.find('ns:xProd', ns).text.upper().strip()
             quantidade = float(prod.find('ns:qCom', ns).text)
+            unidade = prod.find('ns:uCom', ns).text.strip().lower()
+            if 'ton' in unidade:
+                quantidade *= 1000  # converter para kg
             valor_kg = float(prod.find('ns:vUnCom', ns).text)
             valor_venda = float(prod.find('ns:vProd', ns).text)
+            numero_nota = int(infNFe.find('.//ns:ide/ns:nNF', ns).text.lstrip('0'))
 
             if material in NAO_EMBALAGENS:
                 categoria, tipo_nao_embalagem = NAO_EMBALAGENS[material]
@@ -50,9 +57,9 @@ def processar_xml(xml_content, filename):
                 'QUANTIDADE': quantidade if status == 'VALIDADO' else 0,
                 'VALOR POR KG': valor_kg,
                 'VALOR POR VENDA': valor_venda,
-                'NOME DO ARQUIVO': filename,
+                'NOME DO ARQUIVO': str(numero_nota),
                 'CNPJ DO COMPRADOR': infNFe.find('.//ns:dest/ns:CNPJ', ns).text,
-                'UNIDADE': prod.find('ns:uCom', ns).text,
+                'UNIDADE': unidade,
                 'NCM': prod.find('ns:NCM', ns).text,
                 'CFOP': prod.find('ns:CFOP', ns).text,
                 'SOBRA': '',
@@ -91,7 +98,7 @@ def to_excel(df):
                 'Percentual Validado'
             ],
             'Valor': [
-                df['QUANTIDADE'].sum() + df['QUANTIDADE NÃO VALIDADA'].sum(),
+                df['QUANTIDADE'].sum(),
                 df['QUANTIDADE'].sum(),
                 df['QUANTIDADE NÃO VALIDADA'].sum(),
                 f"{(df['QUANTIDADE'].sum() / (df['QUANTIDADE'].sum() + df['QUANTIDADE NÃO VALIDADA'].sum()) * 100):.2f}%" if (df['QUANTIDADE'].sum() + df['QUANTIDADE NÃO VALIDADA'].sum()) > 0 else '0.00%'
@@ -116,10 +123,22 @@ def to_excel(df):
 def main():
     st.title("📄 Sistema de Validação de Notas Fiscais")
 
-    uploaded_files = st.file_uploader("Carregue os arquivos XML das notas fiscais", type=["xml"], accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Carregue os arquivos XML ou ZIP das notas fiscais", type=["xml", "zip"], accept_multiple_files=True)
 
     if uploaded_files:
-        dfs = [processar_xml(file.getvalue(), file.name) for file in uploaded_files if not processar_xml(file.getvalue(), file.name).empty]
+        arquivos_xml = []
+        for uploaded in uploaded_files:
+            if uploaded.name.lower().endswith('.zip'):
+                with zipfile.ZipFile(uploaded) as z:
+                    for name in z.namelist():
+                        if name.endswith('.xml'):
+                            with z.open(name) as file:
+                                arquivos_xml.append(BytesIO(file.read()))
+            elif uploaded.name.lower().endswith('.xml'):
+                arquivos_xml.append(uploaded)
+
+        dfs = [processar_xml(file.getvalue(), '') for file in arquivos_xml if not processar_xml(file.getvalue(), '').empty]
+
         if dfs:
             df_final = pd.concat(dfs, ignore_index=True)
             st.subheader("Editar Dados Processados")
@@ -130,17 +149,37 @@ def main():
             st.download_button("📥 Baixar Resultados em Excel", data=excel_data, file_name="resultados_validacao.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
             st.subheader("Resumo para E-mail")
-            resumo = f"""RESUMO DA VALIDAÇÃO DE NOTAS FISCAIS\n\nTotal de arquivos processados: {len(uploaded_files)}\nTotal Recebido: {edited_df['QUANTIDADE'].sum() + edited_df['QUANTIDADE NÃO VALIDADA'].sum():,.2f} kg\nTotal Validado: {edited_df['QUANTIDADE'].sum():,.2f} kg\nTotal Invalidado: {edited_df['QUANTIDADE NÃO VALIDADA'].sum():,.2f} kg\nPercentual Validado: {(edited_df['QUANTIDADE'].sum() / (edited_df['QUANTIDADE'].sum() + edited_df['QUANTIDADE NÃO VALIDADA'].sum()) * 100 if (edited_df['QUANTIDADE'].sum() + edited_df['QUANTIDADE NÃO VALIDADA'].sum()) > 0 else 0):.2f}%\n\nQuantitativo por Tipo de Material:\n"""
-            tipos = edited_df[edited_df['STATUS'] == 'VALIDADO'].groupby('CATEGORIA')['QUANTIDADE'].sum()
+            total_recebido = (edited_df['QUANTIDADE'] + edited_df['QUANTIDADE NÃO VALIDADA']).sum() / 1000
+            total_validado = edited_df['QUANTIDADE'].sum() / 1000
+            total_invalidado = edited_df['QUANTIDADE NÃO VALIDADA'].sum() / 1000
+            percentual = (total_validado / total_recebido * 100) if total_recebido > 0 else 0
+
+            resumo_linhas = [
+                "RESUMO DA VALIDAÇÃO DE NOTAS FISCAIS",
+                "",
+                f"Total de arquivos processados: {len(arquivos_xml)}",
+                f"Total Recebido: {total_recebido:,.2f} t",
+                f"Total Validado: {total_validado:,.2f} t",
+                f"Total Invalidado: {total_invalidado:,.2f} t",
+                f"Percentual Validado: {percentual:.2f}%",
+                "",
+                "Quantitativo por Tipo de Material:"
+            ]
+
+            tipos = edited_df[edited_df['STATUS'] == 'VALIDADO'].groupby('CATEGORIA')['QUANTIDADE'].sum() / 1000
             for categoria, qtd in tipos.items():
-                resumo += f"- {categoria}: {qtd:,.2f} kg\n"
+                resumo_linhas.append(f"- {categoria}: {qtd:,.2f} t")
 
-            resumo += "\nNotas Fiscais Invalidas:\n"
+            resumo_linhas.append("\nNotas Fiscais Invalidas:")
             for _, row in edited_df[edited_df['STATUS'] == 'INVALIDADO'][['CHAVE DE ACESSO', 'OBSERVAÇÕES']].iterrows():
-                resumo += f"- {row['CHAVE DE ACESSO']}: {row['OBSERVAÇÕES']}\n"
+                resumo_linhas.append(f"- {row['CHAVE DE ACESSO']}: {row['OBSERVAÇÕES']}")
 
-            resumo += "\nDistribuição por Programa:\n"
-           
+            resumo_linhas.append("\nDistribuição por Programa:")
+            programas = edited_df.groupby('PROGRAMA')['QUANTIDADE'].sum() / 1000
+            for programa, qtd in programas.items():
+                resumo_linhas.append(f"- {programa or '(vazio)'}: {qtd:,.2f} t")
+
+            resumo = "\n".join(resumo_linhas)
 
             st.text_area("Texto para copiar:", value=resumo, height=600)
 
