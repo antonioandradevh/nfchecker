@@ -1,6 +1,9 @@
 # Dicionários de materiais para validação de notas fiscais
 
 MATERIAL_MAPPING = {
+    'PAPEL MISTO RECICLAVEL': ('PAPEL', ''),
+    'PAPEL BRANCO RECICLAVEL': ('PAPEL', ''),
+    'PAPELAO  RECICLAVEL': ('PAPEL', ''),
     'SUCATA METALICA': ('METAL', ''),
     'SUCATA METALICA FERROSA': ('METAL', 'FERRO/METAL'),
     'SUCATA ALUMÍNIO MISTO': ('METAL', 'ALUMÍNIO'),
