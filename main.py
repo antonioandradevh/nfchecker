@@ -143,7 +143,7 @@ def processar_xml(xml_content, filename):
                 'QUANTIDADE': quantidade if status == 'VALIDADO' else 0,
                 'VALOR POR KG': valor_kg,
                 'VALOR POR VENDA': valor_venda,
-                'NOME DO ARQUIVO': filename, # Nome do arquivo incluso
+                'NOME DO ARQUIVO': str(numero_nota),
                 'NUMERO NOTA': numero_nota,
                 'CNPJ DO COMPRADOR': cnpj_dest,
                 'UNIDADE': unidade,
@@ -347,3 +347,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
